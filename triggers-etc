@@ -1,0 +1,139 @@
+--tabela
+CREATE TABLE osoba
+(
+  id_osoba INTEGER IDENTITY(1,1) PRIMARY KEY,
+  imie VARCHAR(20) CHECK(LEN(imie)>2) NOT NULL,
+  nazwisko VARCHAR(30) CHECK(LEN(nazwisko)>3) NOT NULL,
+  pesel CHAR(11) UNIQUE,
+  data_ur DATE NOT NULL,
+  pensja MONEY
+  );
+GO
+
+--funkcja
+CREATE FUNCTION spr_pesel(@pesel CHAR(11))
+RETURNS BIT
+AS
+BEGIN
+  IF(LEN(@pesel)!=11) OR (ISNUMERIC(@pesel)=0)
+    RETURN 0
+  DECLARE
+    @wagi AS TABLE(pozycja TINYINT IDENTITY(1,1), waga TINYINT)
+  INSERT INTO @wagi values (1),(3),(7),(9),(1),(3),(7),(9),(1),(3),(1)
+  IF (SELECT SUM(CONVERT(TINYINT,SUBSTRING(@pesel,pozycja,1))*waga)%10
+        FROM @wagi)=0
+       RETURN 1
+      RETURN 0
+END    
+GO
+  
+--wyzwalacz
+CREATE TRIGGER pesel_trig ON osoba
+AFTER INSERT, UPDATE
+AS
+BEGIN
+	DECLARE @pesel CHAR(11)
+	SELECT @pesel = pesel FROM INSERTED
+	IF(dbo.spr_pesel(@pesel)=0)
+		BEGIN
+			RAISERROR('BLEDNY PESEL',1,2)
+			ROLLBACK
+		END
+END
+GO
+
+
+--testy--
+INSERT INTO osoba VALUES ('Olek2','Szewczak','97060801997','1997-05-05',1000);
+GO
+UPDATE osoba SET pesel='123' WHERE imie='Olek'
+GO
+
+--2
+CREATE TRIGGER imie_trig ON osoba
+AFTER INSERT, UPDATE
+AS
+BEGIN
+	DECLARE @nowe_imie VARCHAR(20)
+	DECLARE @imie VARCHAR(20)
+	DECLARE @id INTEGER
+	SELECT @imie = imie FROM INSERTED
+	SELECT @id = id_osoba FROM INSERTED
+
+	SET @nowe_imie = UPPER(LEFT(@imie,1)) + LOWER(RIGHT(@imie,LEN(@imie)-1))
+	UPDATE osoba SET imie=@nowe_imie WHERE id_osoba=@id
+END
+GO
+
+--testy--
+INSERT INTO osoba VALUES ('KAMIL','Szewczk','97043012891','1998-05-05',1030)
+GO
+select * from osoba;
+GO
+
+--3
+CREATE TRIGGER popraw_nazwisko ON osoba
+AFTER INSERT,UPDATE
+AS
+BEGIN
+	DECLARE @nowe_nazwisko VARCHAR(30)
+	DECLARE @nazwisko VARCHAR(30)
+	DECLARE @id INTEGER
+	SELECT @nazwisko = nazwisko FROM INSERTED
+	SELECT @id = id_osoba FROM INSERTED
+	SET @nowe_nazwisko = UPPER(LEFT(@nazwisko,1)) + LOWER(RIGHT(@nazwisko,LEN(@nazwisko)-1))
+	UPDATE osoba SET nazwisko=@nowe_nazwisko WHERE id_osoba=@id
+END
+GO
+
+--testy
+INSERT INTO osoba VALUES ('ANDRZej','BorOWwik','91043012892','1997-05-05',1050)
+GO
+select * from osoba;
+GO
+--4
+CREATE TRIGGER pelnoletnia ON osoba
+AFTER INSERT, UPDATE
+AS
+BEGIN
+	DECLARE @rok_urodzenia INT
+	SELECT @rok_urodzenia = YEAR(data_ur) FROM INSERTED
+	DECLARE @aktualny INT
+	SELECT @aktualny = YEAR(GETDATE())
+	DECLARE @id INT
+	SELECT @id = id_osoba FROM INSERTED
+	IF ((@aktualny-@rok_urodzenia) < 18)
+	BEGIN
+		RAISERROR('Blad',1,2)
+		ROLLBACK
+	END
+END
+GO
+drop trigger pelnoletnia
+--testy
+INSERT INTO osoba VALUES ('ANDfZej','BorOWwik','71043012892','2001-05-05',1050)
+GO
+select * from osoba;
+GO
+
+--5
+
+CREATE TRIGGER pensja_trig ON osoba
+AFTER INSERT, UPDATE
+AS
+BEGIN
+	DECLARE @pensja INT
+	SELECT @pensja = pensja FROM INSERTED
+	IF(@pensja<1111)
+	BEGIN
+		RAISERROR('Blad',1,2)
+		ROLLBACK
+	END
+END
+GO
+
+--testy
+INSERT INTO osoba VALUES ('ANDfZej','BorOWccwik','71043012892','1990-05-05',1150)
+GO
+select * from osoba;
+GO
